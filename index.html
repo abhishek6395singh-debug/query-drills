@@ -1,0 +1,567 @@
+<title>Query Drills</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+  /* Layout: header + level tabs on top; left column = challenge, editor, results; right column = sticky schema reference. Subject: a small roastery's order database. */
+  :root {
+    --bg: #eef1f4;
+    --panel: #ffffff;
+    --panel-2: #f5f7f9;
+    --fg: #101a24;
+    --muted: #586677;
+    --line: #d3dae2;
+    --accent: #0b6e5f;
+    --accent-fg: #ffffff;
+    --accent-soft: #dcefeb;
+    --ok: #1a7f46;
+    --ok-soft: #dff3e6;
+    --bad: #b3261e;
+    --bad-soft: #fbe4e2;
+    --info-soft: #e6ebf1;
+    --code-bg: #f1f4f7;
+    --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1319; --panel: #151d25; --panel-2: #1a242e; --fg: #e5ebf1; --muted: #93a2b2;
+      --line: #28343f; --accent: #4fd1b5; --accent-fg: #06201a; --accent-soft: #14352f;
+      --ok: #55d68b; --ok-soft: #12301f; --bad: #ff8a80; --bad-soft: #3a1a18;
+      --info-soft: #1d2833; --code-bg: #101820; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1319; --panel: #151d25; --panel-2: #1a242e; --fg: #e5ebf1; --muted: #93a2b2;
+    --line: #28343f; --accent: #4fd1b5; --accent-fg: #06201a; --accent-soft: #14352f;
+    --ok: #55d68b; --ok-soft: #12301f; --bad: #ff8a80; --bad-soft: #3a1a18;
+    --info-soft: #1d2833; --code-bg: #101820; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+    padding-block: 20px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.6rem, 4vw, 2.1rem); line-height: 1.1; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { color: var(--muted); margin: 4px 0 0; max-width: 56ch; }
+  .progress { min-width: 180px; }
+  .progress b { font-family: var(--font-mono); font-weight: 500; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tab {
+    font: inherit; font-weight: 500; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; display: inline-flex; gap: 8px; align-items: baseline;
+  }
+  .tab small { font-family: var(--font-mono); color: var(--muted); font-size: 12px; }
+  .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .tab[aria-selected="true"] small { color: inherit; opacity: .85; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font: inherit; font-family: var(--font-mono); font-size: 13px; min-width: 38px; padding: 5px 10px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer;
+  }
+  .chip.done { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+  .chip[aria-current="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; align-items: start; }
+  @media (max-width: 880px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+  .lvl { font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+  h2 { font-family: var(--font-display); font-size: 1.25rem; margin: 2px 0 8px; font-weight: 700; text-wrap: balance; }
+  .prompt { margin: 0; max-width: 68ch; }
+  code { font-family: var(--font-mono); font-size: .9em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+
+  textarea#editor {
+    width: 100%; min-height: 150px; resize: vertical; font-family: var(--font-mono); font-size: 14px; line-height: 1.55;
+    background: var(--code-bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; tab-size: 2;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  button.btn {
+    font: inherit; font-weight: 500; border-radius: 6px; padding: 8px 14px; cursor: pointer;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  }
+  button.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button.btn:hover { filter: brightness(.96); }
+  .kbd { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-left: auto; }
+  .reveal { margin-top: 10px; padding: 10px 12px; border-radius: 6px; background: var(--info-soft); }
+  .reveal pre { margin: 6px 0 0; font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .msg { padding: 10px 12px; border-radius: 6px; font-weight: 500; }
+  .msg.ok { background: var(--ok-soft); color: var(--ok); }
+  .msg.bad { background: var(--bad-soft); color: var(--bad); }
+  .msg.info { background: var(--info-soft); color: var(--fg); }
+  .msg small { display: block; font-weight: 400; margin-top: 2px; }
+  .meta { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin: 10px 0 6px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; max-height: 340px; overflow-y: auto; }
+  table.res { border-collapse: collapse; width: 100%; font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+  table.res th { position: sticky; top: 0; background: var(--panel-2); text-align: left; font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.res td { padding: 5px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.res tr:last-child td { border-bottom: 0; }
+  td.null { color: var(--muted); font-style: italic; }
+  td.num { text-align: right; }
+
+  aside { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  @media (max-width: 880px) { aside { position: static; } }
+  aside h3 { font-family: var(--font-display); font-size: 1rem; margin: 0; }
+  .tbl { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .tbl summary { cursor: pointer; padding: 8px 10px; font-family: var(--font-mono); font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; gap: 8px; }
+  .tbl summary span { color: var(--muted); font-weight: 400; }
+  .tbl ul { list-style: none; margin: 0; padding: 0 10px 8px; font-family: var(--font-mono); font-size: 12px; }
+  .tbl li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .tbl li em { color: var(--muted); font-style: normal; }
+  .note { color: var(--muted); font-size: 13px; margin: 0; }
+  #loadmsg { color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Query Drills</h1>
+      <p class="sub">Practice SQL on a small coffee roastery's database. Queries run in your browser, so you can try anything.</p>
+    </div>
+    <div class="progress" aria-live="polite">
+      <div><b id="solvedCount">0</b> of <b id="totalCount">0</b> solved</div>
+      <div class="bar"><i id="barFill"></i></div>
+    </div>
+  </header>
+
+  <div class="tabs" id="tabs" role="tablist" aria-label="Difficulty"></div>
+  <div class="chips" id="chips" aria-label="Challenges"></div>
+
+  <div class="grid">
+    <div class="main">
+      <section class="card" id="challenge">
+        <div id="loadmsg">Loading the SQL engine…</div>
+      </section>
+      <section class="card" id="workbench" hidden>
+        <label for="editor" class="lvl" style="display:block;margin-bottom:6px">Your query</label>
+        <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="SQL editor"></textarea>
+        <div class="actions">
+          <button class="btn primary" id="runBtn" type="button">Run query</button>
+          <button class="btn" id="hintBtn" type="button">Hint</button>
+          <button class="btn" id="solBtn" type="button">Show solution</button>
+          <button class="btn" id="resetBtn" type="button">Reset editor</button>
+          <span class="kbd">Ctrl / ⌘ + Enter</span>
+        </div>
+        <div id="reveal"></div>
+      </section>
+      <section class="card" id="output" hidden aria-live="polite"></section>
+    </div>
+
+    <aside>
+      <h3>Tables</h3>
+      <div id="schema"></div>
+      <p class="note">Prices are in rupees (₹). Dates are ISO text like <code>2026-03-14</code>. Statements that change data are discarded after each run.</p>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-asm.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Sample data ---------- */
+  var SCHEMA_SQL = [
+    "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT, city TEXT, joined_on TEXT);",
+    "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, category TEXT, price INTEGER);",
+    "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, ordered_on TEXT, status TEXT);",
+    "CREATE TABLE order_items (order_id INTEGER, product_id INTEGER, qty INTEGER);",
+    "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, role TEXT, manager_id INTEGER, salary INTEGER);"
+  ].join("\n");
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function q(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
+  function isoDate(base, offset) {
+    var d = new Date(Date.UTC(base[0], base[1] - 1, base[2] + offset));
+    return d.toISOString().slice(0, 10);
+  }
+
+  function buildDataSQL() {
+    var rng = mulberry32(2026);
+    var out = [];
+    var customers = [
+      ["Aarav Joshi", "Pune", "2025-06-12"], ["Diya Menon", "Kochi", "2025-06-30"],
+      ["Kabir Singh", "Delhi", "2025-07-21"], ["Nisha Patel", "Mumbai", "2025-08-04"],
+      ["Rahul Verma", "Pune", "2025-08-19"], ["Sneha Reddy", "Bengaluru", "2025-09-02"],
+      ["Arjun Nair", "Kochi", "2025-09-27"], ["Pooja Shah", "Mumbai", "2025-10-15"],
+      ["Imran Khan", "Delhi", "2025-11-03"], ["Tanvi Kulkarni", "Pune", "2025-11-22"],
+      ["Vivek Iyer", "Chennai", "2025-12-09"], ["Mira Bose", "Bengaluru", "2026-01-14"],
+      ["Harsh Gupta", "Pune", "2026-01-30"], ["Lakshmi Pillai", "Chennai", "2026-02-11"]
+    ];
+    customers.forEach(function (c, i) {
+      out.push("INSERT INTO customers VALUES (" + (i + 1) + "," + q(c[0]) + "," + q(c[1]) + "," + q(c[2]) + ");");
+    });
+    var products = [
+      ["Monsoon Malabar", "Beans", 380], ["Coorg Peaberry", "Beans", 420],
+      ["Chikmagalur Estate", "Beans", 450], ["Ethiopia Yirgacheffe", "Beans", 480],
+      ["Ceramic Dripper", "Gear", 1200], ["Burr Hand Grinder", "Gear", 3400],
+      ["Gooseneck Kettle", "Gear", 2600], ["Paper Filters", "Gear", 180],
+      ["Travel Mug", "Gear", 750], ["Darjeeling First Flush", "Tea", 1100],
+      ["Assam CTC", "Tea", 320], ["Nilgiri Green", "Tea", 420], ["Masala Chai Blend", "Tea", 360]
+    ];
+    products.forEach(function (p, i) {
+      out.push("INSERT INTO products VALUES (" + (i + 1) + "," + q(p[0]) + "," + q(p[1]) + "," + p[2] + ");");
+    });
+    var N = 38, offsets = [];
+    for (var i = 0; i < N; i++) offsets.push(Math.floor(rng() * 300));
+    offsets.sort(function (a, b) { return a - b; });
+    for (var o = 0; o < N; o++) {
+      var cust = o < 12 ? o + 1 : 1 + Math.floor(rng() * 12);
+      var r = rng();
+      var status = r < 0.12 ? "cancelled" : r < 0.3 ? "shipped" : "delivered";
+      out.push("INSERT INTO orders VALUES (" + (o + 1) + "," + cust + "," + q(isoDate([2026, 1, 5], offsets[o])) + "," + q(status) + ");");
+      var n = 1 + Math.floor(rng() * 3), used = {};
+      for (var k = 0; k < n; k++) {
+        var pid;
+        do { pid = 1 + Math.floor(rng() * products.length); } while (used[pid]);
+        used[pid] = true;
+        out.push("INSERT INTO order_items VALUES (" + (o + 1) + "," + pid + "," + (1 + Math.floor(rng() * 3)) + ");");
+      }
+    }
+    var emps = [
+      [1, "Meera Iyer", "Founder", "NULL", 180000], [2, "Rohan Desai", "Head of Roasting", 1, 95000],
+      [3, "Anita Kulkarni", "Head of Retail", 1, 92000], [4, "Vikram Shah", "Roaster", 2, 52000],
+      [5, "Sana Qureshi", "Roaster", 2, 54000], [6, "Dev Patil", "Store Lead", 3, 58000],
+      [7, "Isha Nair", "Barista", 6, 34000], [8, "Karan Mehta", "Barista", 6, 33000],
+      [9, "Leela Rao", "Trainee Roaster", 4, 28000]
+    ];
+    emps.forEach(function (e) {
+      out.push("INSERT INTO employees VALUES (" + e[0] + "," + q(e[1]) + "," + q(e[2]) + "," + e[3] + "," + e[4] + ");");
+    });
+    return out.join("\n");
+  }
+  var DATA_SQL = buildDataSQL();
+
+  /* ---------- Challenges ---------- */
+  var SPEND = "SELECT c.name, SUM(oi.qty * p.price) AS spend FROM customers c JOIN orders o ON o.customer_id = c.id JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.status != 'cancelled' GROUP BY c.id";
+  var MONTHLY = "SELECT strftime('%Y-%m', o.ordered_on) AS month, SUM(oi.qty * p.price) AS revenue FROM orders o JOIN order_items oi ON oi.order_id = o.id JOIN products p ON p.id = oi.product_id WHERE o.status != 'cancelled' GROUP BY month";
+
+  var LEVELS = [
+    { id: "beginner", label: "Beginner" },
+    { id: "intermediate", label: "Intermediate" },
+    { id: "advanced", label: "Advanced" }
+  ];
+
+  var CHALLENGES = [
+    { id: "b1", level: "beginner", title: "Meet the customers",
+      prompt: "Return every column and every row from the <code>customers</code> table.",
+      hint: "<code>SELECT *</code> means all columns.",
+      solution: "SELECT * FROM customers;" },
+    { id: "b2", level: "beginner", title: "Premium products",
+      prompt: "List the <code>name</code> and <code>price</code> of products that cost more than ₹400.",
+      hint: "Filter with <code>WHERE price &gt; 400</code>.",
+      solution: "SELECT name, price FROM products WHERE price > 400;" },
+    { id: "b3", level: "beginner", title: "Pune regulars",
+      prompt: "Which customers live in Pune? Return only <code>name</code>, sorted A to Z.",
+      hint: "Text values need single quotes. Sort with <code>ORDER BY name</code>.",
+      solution: "SELECT name FROM customers WHERE city = 'Pune' ORDER BY name;", ordered: true },
+    { id: "b4", level: "beginner", title: "Delivered orders",
+      prompt: "How many orders have the status <code>delivered</code>? Return a single number.",
+      hint: "Use <code>COUNT(*)</code> together with a <code>WHERE</code> filter.",
+      solution: "SELECT COUNT(*) FROM orders WHERE status = 'delivered';" },
+    { id: "b5", level: "beginner", title: "Three cheapest",
+      prompt: "Return the <code>name</code> and <code>price</code> of the three cheapest products, cheapest first.",
+      hint: "<code>ORDER BY price</code> then <code>LIMIT 3</code>.",
+      solution: "SELECT name, price FROM products ORDER BY price LIMIT 3;", ordered: true },
+    { id: "b6", level: "beginner", title: "Beans and tea",
+      prompt: "List the <code>name</code> of every product whose category is Beans or Tea.",
+      hint: "<code>category IN ('Beans', 'Tea')</code> is shorter than two <code>OR</code>s.",
+      solution: "SELECT name FROM products WHERE category IN ('Beans', 'Tea');" },
+
+    { id: "i1", level: "intermediate", title: "Who cancelled?",
+      prompt: "Show the order <code>id</code> and the customer's <code>name</code> for every cancelled order.",
+      hint: "Join <code>orders</code> to <code>customers</code> on <code>orders.customer_id = customers.id</code>.",
+      solution: "SELECT o.id, c.name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'cancelled';" },
+    { id: "i2", level: "intermediate", title: "Orders per customer",
+      prompt: "For each customer who has placed orders, return their <code>name</code> and the number of orders.",
+      hint: "<code>JOIN</code>, then <code>GROUP BY</code> the customer and <code>COUNT(*)</code>.",
+      solution: "SELECT c.name, COUNT(*) FROM customers c JOIN orders o ON o.customer_id = c.id GROUP BY c.id;" },
+    { id: "i3", level: "intermediate", title: "Pricey categories",
+      prompt: "Which product categories have an average price above ₹500? Return the <code>category</code> and the average price.",
+      hint: "Filters on aggregates go in <code>HAVING</code>, not <code>WHERE</code>.",
+      solution: "SELECT category, AVG(price) FROM products GROUP BY category HAVING AVG(price) > 500;" },
+    { id: "i4", level: "intermediate", title: "Never ordered",
+      prompt: "Find the <code>name</code> of customers who have never placed an order.",
+      hint: "A <code>LEFT JOIN</code> keeps customers with no match. Look for <code>o.id IS NULL</code>.",
+      solution: "SELECT c.name FROM customers c LEFT JOIN orders o ON o.customer_id = c.id WHERE o.id IS NULL;" },
+    { id: "i5", level: "intermediate", title: "Who reports to whom",
+      prompt: "List each employee's <code>name</code> with their manager's name. Leave out the founder, who has no manager.",
+      hint: "Join <code>employees</code> to itself using two aliases.",
+      solution: "SELECT e.name, m.name FROM employees e JOIN employees m ON m.id = e.manager_id;" },
+    { id: "i6", level: "intermediate", title: "Above the average",
+      prompt: "Return the <code>name</code> and <code>price</code> of products that cost more than the average product price.",
+      hint: "Put <code>(SELECT AVG(price) FROM products)</code> inside the <code>WHERE</code>.",
+      solution: "SELECT name, price FROM products WHERE price > (SELECT AVG(price) FROM products);" },
+    { id: "i7", level: "intermediate", title: "Biggest five orders",
+      prompt: "Compute each order's total (<code>qty * price</code> summed over its items) and return the <code>order_id</code> and total for the five largest orders. Largest first, and break ties by lower <code>order_id</code>. Include cancelled orders.",
+      hint: "Join <code>order_items</code> to <code>products</code>, <code>GROUP BY order_id</code>, then <code>ORDER BY</code> the sum descending.",
+      solution: "SELECT oi.order_id, SUM(oi.qty * p.price) AS total FROM order_items oi JOIN products p ON p.id = oi.product_id GROUP BY oi.order_id ORDER BY total DESC, oi.order_id LIMIT 5;", ordered: true },
+
+    { id: "a1", level: "advanced", title: "Monthly revenue",
+      prompt: "Return revenue per month as <code>month</code> (like <code>2026-03</code>) and <code>revenue</code>, oldest first. Revenue is <code>qty * price</code> summed over items of orders that are not cancelled.",
+      hint: "<code>strftime('%Y-%m', ordered_on)</code> gives the month. A CTE keeps the joins readable.",
+      solution: MONTHLY + " ORDER BY month;", ordered: true },
+    { id: "a2", level: "advanced", title: "Month over month",
+      prompt: "Extend monthly revenue with a third column showing the change from the previous month. The first month has no previous value, so it stays NULL. Oldest month first.",
+      hint: "Wrap the monthly query in a CTE, then use <code>LAG(revenue) OVER (ORDER BY month)</code>.",
+      solution: "WITH monthly AS (" + MONTHLY + ") SELECT month, revenue, revenue - LAG(revenue) OVER (ORDER BY month) AS change FROM monthly ORDER BY month;", ordered: true },
+    { id: "a3", level: "advanced", title: "Spend leaderboard",
+      prompt: "Rank customers by total spend (non-cancelled orders only). Return <code>name</code>, <code>spend</code> and <code>rank</code>, where tied customers share a rank. Highest spender first.",
+      hint: "Compute spend in a CTE, then <code>RANK() OVER (ORDER BY spend DESC)</code>.",
+      solution: "WITH spend AS (" + SPEND + ") SELECT name, spend, RANK() OVER (ORDER BY spend DESC) AS rnk FROM spend ORDER BY spend DESC, name;", ordered: true },
+    { id: "a4", level: "advanced", title: "Best seller per category",
+      prompt: "For each category, find the product with the most units sold in non-cancelled orders. Return <code>category</code>, <code>name</code> and <code>units</code>. If two products tie, pick the one that comes first alphabetically.",
+      hint: "Sum units per product in a CTE, then <code>ROW_NUMBER() OVER (PARTITION BY category ORDER BY units DESC, name)</code> and keep row 1.",
+      solution: "WITH sold AS (SELECT p.category, p.name, SUM(oi.qty) AS units FROM order_items oi JOIN products p ON p.id = oi.product_id JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled' GROUP BY p.id), ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY category ORDER BY units DESC, name) AS rn FROM sold) SELECT category, name, units FROM ranked WHERE rn = 1;" },
+    { id: "a5", level: "advanced", title: "Org chart depth",
+      prompt: "Walk the employee hierarchy from the founder down. Return each employee's <code>name</code> and <code>depth</code> (the founder is 0, direct reports are 1, and so on), ordered by depth then name.",
+      hint: "<code>WITH RECURSIVE</code>: start from <code>manager_id IS NULL</code>, then join employees to the previous level and add 1.",
+      solution: "WITH RECURSIVE chain(id, name, depth) AS (SELECT id, name, 0 FROM employees WHERE manager_id IS NULL UNION ALL SELECT e.id, e.name, c.depth + 1 FROM employees e JOIN chain c ON e.manager_id = c.id) SELECT name, depth FROM chain ORDER BY depth, name;", ordered: true },
+    { id: "a6", level: "advanced", title: "Big spenders",
+      prompt: "Return the <code>name</code> and <code>spend</code> of customers whose total spend (non-cancelled orders) is above the average spend across customers who have spent anything.",
+      hint: "Reuse one CTE twice: once for the rows, once inside <code>(SELECT AVG(spend) FROM ...)</code>.",
+      solution: "WITH spend AS (" + SPEND + ") SELECT name, spend FROM spend WHERE spend > (SELECT AVG(spend) FROM spend);" }
+  ];
+  var SANDBOX = { id: "sandbox", level: "sandbox", title: "Free query",
+    prompt: "No target here. Explore the tables however you like and see what comes back.",
+    hint: "Try <code>SELECT * FROM orders LIMIT 10;</code> or <code>SELECT name FROM sqlite_master;</code>",
+    solution: null, starter: "SELECT * FROM orders LIMIT 10;" };
+
+  /* ---------- State ---------- */
+  var SQL = null, db = null;
+  var current = null, tab = "beginner";
+  var drafts = {}, expectedCache = {};
+  var solved = {};
+  try { solved = JSON.parse(localStorage.getItem("query-drills-solved") || "{}") || {}; } catch (e) { solved = {}; }
+  function saveSolved() { try { localStorage.setItem("query-drills-solved", JSON.stringify(solved)); } catch (e) {} }
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  /* ---------- Database ---------- */
+  function makeDb() {
+    var d = new SQL.Database();
+    d.run(SCHEMA_SQL);
+    d.run(DATA_SQL);
+    return d;
+  }
+  function runSQL(sql) {
+    var t0 = performance.now();
+    var res = db.exec(sql);
+    var last = null;
+    for (var i = res.length - 1; i >= 0; i--) { if (res[i].columns && res[i].columns.length) { last = res[i]; break; } }
+    var ms = performance.now() - t0;
+    var mutating = /\b(insert|update|delete|drop|alter|create|replace|attach|vacuum)\b/i.test(sql);
+    if (mutating) { db.close(); db = makeDb(); }
+    return { columns: last ? last.columns : [], rows: last ? last.values : [], ms: ms, mutating: mutating };
+  }
+  function expectedFor(ch) {
+    if (!expectedCache[ch.id]) {
+      var r = db.exec(ch.solution);
+      var last = r[r.length - 1];
+      expectedCache[ch.id] = { columns: last.columns, rows: last.values };
+    }
+    return expectedCache[ch.id];
+  }
+  function norm(v) { return typeof v === "number" ? Math.round(v * 10000) / 10000 : v; }
+  function rowKeys(rows) { return rows.map(function (r) { return JSON.stringify(r.map(norm)); }); }
+
+  function check(ch, got) {
+    var exp = expectedFor(ch);
+    if (got.columns.length !== exp.columns.length) {
+      return { ok: false, text: "Not quite", detail: "The result should have " + exp.columns.length + " column" + (exp.columns.length === 1 ? "" : "s") + ", but yours has " + got.columns.length + "." };
+    }
+    if (got.rows.length !== exp.rows.length) {
+      return { ok: false, text: "Not quite", detail: "The result should have " + exp.rows.length + " row" + (exp.rows.length === 1 ? "" : "s") + ", but yours has " + got.rows.length + "." };
+    }
+    var a = rowKeys(got.rows), b = rowKeys(exp.rows);
+    if (!ch.ordered) { a.sort(); b.sort(); }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        return { ok: false, text: "Close", detail: ch.ordered ? "The row count and columns match, but the values or their order differ." : "The row count and columns match, but some values differ." };
+      }
+    }
+    return { ok: true, text: "Correct", detail: "Your result matches the expected one." };
+  }
+
+  /* ---------- Rendering ---------- */
+  function renderSchema() {
+    var html = "";
+    var tables = db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")[0].values;
+    tables.forEach(function (t) {
+      var name = t[0];
+      var cols = db.exec("PRAGMA table_info(" + name + ")")[0].values;
+      var count = db.exec("SELECT COUNT(*) FROM " + name)[0].values[0][0];
+      html += '<details class="tbl"><summary>' + esc(name) + "<span>" + count + " rows</span></summary><ul>";
+      cols.forEach(function (c) { html += "<li>" + esc(c[1]) + "<em>" + esc((c[2] || "").toLowerCase()) + (c[5] ? " · pk" : "") + "</em></li>"; });
+      html += "</ul></details>";
+    });
+    $("schema").innerHTML = html;
+    var first = $("schema").querySelector("details");
+    if (first) first.open = true;
+  }
+
+  function updateProgress() {
+    var done = CHALLENGES.filter(function (c) { return solved[c.id]; }).length;
+    $("solvedCount").textContent = done;
+    $("totalCount").textContent = CHALLENGES.length;
+    $("barFill").style.width = (100 * done / CHALLENGES.length) + "%";
+  }
+
+  function renderTabs() {
+    var html = "";
+    LEVELS.forEach(function (l) {
+      var all = CHALLENGES.filter(function (c) { return c.level === l.id; });
+      var done = all.filter(function (c) { return solved[c.id]; }).length;
+      html += '<button class="tab" role="tab" type="button" data-tab="' + l.id + '" aria-selected="' + (tab === l.id) + '">' + l.label + " <small>" + done + "/" + all.length + "</small></button>";
+    });
+    html += '<button class="tab" role="tab" type="button" data-tab="sandbox" aria-selected="' + (tab === "sandbox") + '">Sandbox</button>';
+    $("tabs").innerHTML = html;
+  }
+
+  function renderChips() {
+    var list = tab === "sandbox" ? [] : CHALLENGES.filter(function (c) { return c.level === tab; });
+    var html = "";
+    list.forEach(function (c, i) {
+      html += '<button class="chip' + (solved[c.id] ? " done" : "") + '" type="button" data-id="' + c.id + '" aria-current="' + (current && current.id === c.id) + '" title="' + esc(c.title) + '">' + (i + 1) + (solved[c.id] ? " ✓" : "") + "</button>";
+    });
+    $("chips").innerHTML = html;
+  }
+
+  function selectChallenge(ch) {
+    if (current && current.id !== ch.id) drafts[current.id] = $("editor").value;
+    current = ch;
+    var label = ch.level === "sandbox" ? "Sandbox" : LEVELS.filter(function (l) { return l.id === ch.level; })[0].label;
+    var idx = ch.level === "sandbox" ? "" : " · " + (CHALLENGES.filter(function (c) { return c.level === ch.level; }).indexOf(ch) + 1);
+    $("challenge").innerHTML = '<div class="lvl">' + label + idx + "</div><h2>" + esc(ch.title) + '</h2><p class="prompt">' + ch.prompt + "</p>";
+    $("workbench").hidden = false;
+    $("output").hidden = true;
+    $("output").innerHTML = "";
+    $("reveal").innerHTML = "";
+    $("solBtn").hidden = !ch.solution;
+    $("editor").value = drafts[ch.id] != null ? drafts[ch.id] : (ch.starter || "");
+    renderChips();
+  }
+
+  function showResult(res, verdict) {
+    var out = "";
+    if (verdict) {
+      out += '<div class="msg ' + (verdict.ok ? "ok" : "bad") + '">' + verdict.text + "<small>" + esc(verdict.detail) + "</small></div>";
+    }
+    if (res.mutating) out += '<div class="msg info" style="margin-top:8px">That statement changes data, so it was discarded and the sample data is back to normal.</div>';
+    if (res.columns.length) {
+      out += '<div class="meta">' + res.rows.length + " row" + (res.rows.length === 1 ? "" : "s") + " · " + res.ms.toFixed(1) + " ms" + (res.rows.length > 200 ? " · showing first 200" : "") + "</div>";
+      out += '<div class="tablewrap"><table class="res"><thead><tr>' + res.columns.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") + "</tr></thead><tbody>";
+      res.rows.slice(0, 200).forEach(function (r) {
+        out += "<tr>" + r.map(function (v) {
+          if (v === null) return '<td class="null">NULL</td>';
+          return '<td class="' + (typeof v === "number" ? "num" : "") + '">' + esc(v) + "</td>";
+        }).join("") + "</tr>";
+      });
+      out += "</tbody></table></div>";
+    } else if (!res.mutating) {
+      out += '<div class="msg info" style="margin-top:8px">The query ran but returned no rows.</div>';
+    }
+    $("output").innerHTML = out;
+    $("output").hidden = false;
+  }
+
+  function showError(e) {
+    $("output").innerHTML = '<div class="msg bad">SQL error<small>' + esc(e.message || e) + "</small></div>";
+    $("output").hidden = false;
+  }
+
+  function onRun() {
+    var sql = $("editor").value.trim();
+    if (!sql) { showError("Write a query first."); return; }
+    drafts[current.id] = $("editor").value;
+    var res;
+    try { res = runSQL(sql); } catch (e) { showError(e); return; }
+    var verdict = null;
+    if (current.solution) {
+      try { verdict = check(current, res); } catch (e) { verdict = null; }
+      if (verdict && verdict.ok && !solved[current.id]) {
+        solved[current.id] = true; saveSolved(); updateProgress(); renderTabs(); renderChips();
+      }
+    }
+    showResult(res, verdict);
+  }
+
+  /* ---------- Events ---------- */
+  $("tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-tab]"); if (!b) return;
+    tab = b.getAttribute("data-tab");
+    renderTabs();
+    if (tab === "sandbox") { selectChallenge(SANDBOX); return; }
+    var list = CHALLENGES.filter(function (c) { return c.level === tab; });
+    selectChallenge(list.filter(function (c) { return !solved[c.id]; })[0] || list[0]);
+  });
+  $("chips").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-id]"); if (!b) return;
+    selectChallenge(CHALLENGES.filter(function (c) { return c.id === b.getAttribute("data-id"); })[0]);
+  });
+  $("runBtn").addEventListener("click", onRun);
+  $("hintBtn").addEventListener("click", function () {
+    $("reveal").innerHTML = '<div class="reveal"><strong>Hint</strong><div>' + current.hint + "</div></div>";
+  });
+  $("solBtn").addEventListener("click", function () {
+    $("reveal").innerHTML = '<div class="reveal"><strong>One possible solution</strong><pre>' + esc(current.solution) + "</pre></div>";
+  });
+  $("resetBtn").addEventListener("click", function () {
+    $("editor").value = current.starter || "";
+    delete drafts[current.id];
+    $("reveal").innerHTML = "";
+    $("editor").focus();
+  });
+  $("editor").addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); onRun(); }
+    else if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      var t = e.target, s = t.selectionStart;
+      t.value = t.value.slice(0, s) + "  " + t.value.slice(t.selectionEnd);
+      t.selectionStart = t.selectionEnd = s + 2;
+    }
+  });
+
+  /* ---------- Boot ---------- */
+  function boot() {
+    if (typeof initSqlJs !== "function") {
+      $("loadmsg").textContent = "The SQL engine could not be loaded. Check your connection and reload the page.";
+      return;
+    }
+    initSqlJs().then(function (S) {
+      SQL = S;
+      db = makeDb();
+      renderSchema();
+      updateProgress();
+      var firstOpen = CHALLENGES.filter(function (c) { return !solved[c.id]; })[0] || CHALLENGES[0];
+      tab = firstOpen.level;
+      renderTabs();
+      selectChallenge(firstOpen);
+    }).catch(function (e) {
+      $("loadmsg").textContent = "The SQL engine failed to start: " + (e && e.message ? e.message : e);
+    });
+  }
+  boot();
+})();
+</script>
